@@ -6,9 +6,10 @@ import sqlite3
 import hashlib
 import io
 
-# =========================================================
+
+# ============================================================
 # PAGE CONFIGURATION
-# =========================================================
+# ============================================================
 
 st.set_page_config(
     page_title="Smart Data Analyzer",
@@ -16,54 +17,55 @@ st.set_page_config(
     layout="wide"
 )
 
-# =========================================================
+
+# ============================================================
 # CUSTOM CSS
-# =========================================================
+# ============================================================
 
 st.markdown("""
 <style>
 
-.main-title {
-    font-size: 38px;
+.main {
+    background-color: #f7f9fc;
+}
+
+.block-container {
+    padding-top: 2rem;
+}
+
+h1 {
     font-weight: 700;
-    margin-bottom: 5px;
 }
 
-.subtitle {
-    font-size: 18px;
-    color: #666;
-    margin-bottom: 25px;
-}
-
-.card {
+.metric-card {
+    background-color: white;
     padding: 20px;
     border-radius: 12px;
-    border: 1px solid #ddd;
-    background-color: #ffffff;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
     margin-bottom: 15px;
 }
 
-.section-title {
-    font-size: 25px;
-    font-weight: 600;
-    margin-top: 20px;
-    margin-bottom: 15px;
+.feature-card {
+    background-color: white;
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    min-height: 180px;
 }
 
 .footer {
     text-align: center;
-    padding: 25px;
-    color: #777;
-    margin-top: 40px;
+    padding: 20px;
+    color: gray;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
 
-# =========================================================
-# DATABASE
-# =========================================================
+# ============================================================
+# DATABASE FUNCTIONS
+# ============================================================
 
 def create_database():
 
@@ -76,6 +78,34 @@ def create_database():
             password TEXT NOT NULL
         )
     """)
+
+    connection.commit()
+
+    # --------------------------------------------------------
+    # AUTOMATIC ADMIN ACCOUNT
+    # Username: admin
+    # Password: admin123
+    # --------------------------------------------------------
+
+    admin_password = hash_password("admin123")
+
+    cursor.execute(
+        "SELECT username FROM users WHERE username = ?",
+        ("admin",)
+    )
+
+    admin_exists = cursor.fetchone()
+
+    if admin_exists:
+        cursor.execute(
+            "UPDATE users SET password = ? WHERE username = ?",
+            (admin_password, "admin")
+        )
+    else:
+        cursor.execute(
+            "INSERT INTO users (username, password) VALUES (?, ?)",
+            ("admin", admin_password)
+        )
 
     connection.commit()
     connection.close()
@@ -144,22 +174,23 @@ def get_users():
 
     connection = sqlite3.connect("users.db")
 
-    df = pd.read_sql_query(
+    dataframe = pd.read_sql_query(
         "SELECT username FROM users",
         connection
     )
 
     connection.close()
 
-    return df
+    return dataframe
 
 
+# Create database automatically
 create_database()
 
 
-# =========================================================
+# ============================================================
 # SESSION STATE
-# =========================================================
+# ============================================================
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -171,31 +202,35 @@ if "uploaded_file_name" not in st.session_state:
     st.session_state.uploaded_file_name = ""
 
 
-# =========================================================
-# LOGIN / SIGNUP
-# =========================================================
+# ============================================================
+# LOGIN / SIGNUP PAGE
+# ============================================================
 
 if not st.session_state.logged_in:
 
     st.markdown(
-        '<div class="main-title">📊 Smart Data Analyzer</div>',
+        "<h1 style='text-align:center;'>📊 Smart Data Analyzer</h1>",
         unsafe_allow_html=True
     )
 
     st.markdown(
-        '<div class="subtitle">Smart Data Visualization and Business Insights System</div>',
+        "<p style='text-align:center;'>"
+        "Smart Data Visualization and Business Insights System"
+        "</p>",
         unsafe_allow_html=True
     )
 
-    tab1, tab2 = st.tabs(
+    st.write("")
+
+    login_tab, signup_tab = st.tabs(
         ["🔐 Login", "📝 Sign Up"]
     )
 
-    # -----------------------------------------------------
+    # ========================================================
     # LOGIN
-    # -----------------------------------------------------
+    # ========================================================
 
-    with tab1:
+    with login_tab:
 
         st.subheader("Login")
 
@@ -212,24 +247,19 @@ if not st.session_state.logged_in:
 
         if st.button(
             "Login",
-            type="primary",
             use_container_width=True
         ):
 
-            if username == "" or password == "":
+            if username.strip() == "" or password.strip() == "":
 
-                st.warning(
-                    "Please enter username and password."
-                )
+                st.error("Please enter username and password.")
 
             elif check_login(username, password):
 
                 st.session_state.logged_in = True
                 st.session_state.username = username
 
-                st.success(
-                    "Login successful!"
-                )
+                st.success("Login successful!")
 
                 st.rerun()
 
@@ -239,11 +269,11 @@ if not st.session_state.logged_in:
                     "Invalid username or password."
                 )
 
-    # -----------------------------------------------------
+    # ========================================================
     # SIGNUP
-    # -----------------------------------------------------
+    # ========================================================
 
-    with tab2:
+    with signup_tab:
 
         st.subheader("Create New Account")
 
@@ -266,19 +296,22 @@ if not st.session_state.logged_in:
 
         if st.button(
             "Create Account",
-            type="primary",
             use_container_width=True
         ):
 
-            if new_username == "" or new_password == "":
+            if (
+                new_username.strip() == ""
+                or new_password.strip() == ""
+                or confirm_password.strip() == ""
+            ):
 
-                st.warning(
+                st.error(
                     "Please fill all fields."
                 )
 
             elif len(new_password) < 4:
 
-                st.warning(
+                st.error(
                     "Password must contain at least 4 characters."
                 )
 
@@ -288,13 +321,20 @@ if not st.session_state.logged_in:
                     "Passwords do not match."
                 )
 
+            elif new_username.lower() == "admin":
+
+                st.error(
+                    "The username 'admin' is reserved for the administrator."
+                )
+
             elif create_user(
-                new_username,
+                new_username.strip(),
                 new_password
             ):
 
                 st.success(
-                    "Account created successfully! Please login."
+                    "Account created successfully! "
+                    "You can now login."
                 )
 
             else:
@@ -303,76 +343,84 @@ if not st.session_state.logged_in:
                     "Username already exists."
                 )
 
+    st.markdown(
+        "<div class='footer'>"
+        "Smart Data Analyzer | MCA Academic Project"
+        "</div>",
+        unsafe_allow_html=True
+    )
+
     st.stop()
 
 
-# =========================================================
+# ============================================================
 # SIDEBAR
-# =========================================================
+# ============================================================
 
-st.sidebar.title("📊 Smart Data Analyzer")
+with st.sidebar:
 
-st.sidebar.write(
-    f"Welcome, **{st.session_state.username}**"
-)
+    st.title("📊 Smart Data Analyzer")
 
-st.sidebar.divider()
-
-if st.session_state.username == "admin":
-
-    page = st.sidebar.radio(
-        "Navigation",
-        [
-            "🏠 Home",
-            "📊 Data Analyzer",
-            "👥 User Management",
-            "ℹ️ System Information"
-        ]
+    st.write(
+        f"Welcome, **{st.session_state.username}**"
     )
 
-else:
+    st.divider()
 
-    page = st.sidebar.radio(
-        "Navigation",
-        [
-            "🏠 Home",
-            "📊 Data Analyzer"
-        ]
-    )
+    if st.session_state.username == "admin":
+
+        menu = st.radio(
+            "Navigation",
+            [
+                "🏠 Home",
+                "📊 Data Analyzer",
+                "👥 User Management",
+                "ℹ️ System Information"
+            ]
+        )
+
+    else:
+
+        menu = st.radio(
+            "Navigation",
+            [
+                "🏠 Home",
+                "📊 Data Analyzer"
+            ]
+        )
+
+    st.divider()
+
+    if st.button(
+        "🚪 Logout",
+        use_container_width=True
+    ):
+
+        st.session_state.logged_in = False
+        st.session_state.username = ""
+
+        st.rerun()
 
 
-st.sidebar.divider()
-
-if st.sidebar.button(
-    "Logout",
-    use_container_width=True
-):
-
-    st.session_state.logged_in = False
-    st.session_state.username = ""
-
-    st.rerun()
-
-
-# =========================================================
+# ============================================================
 # HOME PAGE
-# =========================================================
+# ============================================================
 
-if page == "🏠 Home":
+if menu == "🏠 Home":
 
-    st.markdown(
-        '<div class="main-title">Smart Data Analyzer</div>',
-        unsafe_allow_html=True
+    st.title("📊 Smart Data Analyzer")
+
+    st.subheader(
+        "Smart Data Visualization and Business Insights System"
     )
 
-    st.markdown(
-        '<div class="subtitle">Turn raw data into meaningful business insights</div>',
-        unsafe_allow_html=True
+    st.write(
+        "Analyze CSV and Excel datasets, clean data, "
+        "create interactive visualizations and generate "
+        "business insights."
     )
 
-    st.success(
-        f"👋 Welcome **{st.session_state.username}**!"
-    )
+    st.write("")
 
     # Metrics
 
@@ -390,7 +438,7 @@ if page == "🏠 Home":
     with col2:
 
         st.metric(
-            "Dataset",
+            "Current Dataset",
             "Ready"
         )
 
@@ -408,129 +456,128 @@ if page == "🏠 Home":
             "Enabled"
         )
 
-    st.divider()
+    st.write("")
 
     st.subheader("🚀 Quick Start")
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
 
         st.markdown("""
-        <div class="card">
-
-        ### 📁 1. Upload Data
-
-        Upload your CSV or Excel dataset.
-
+        <div class="feature-card">
+        <h3>📁 Upload</h3>
+        <p>
+        Upload CSV or Excel files for analysis.
+        </p>
         </div>
         """, unsafe_allow_html=True)
 
     with col2:
 
         st.markdown("""
-        <div class="card">
-
-        ### 📊 2. Analyze Data
-
-        Automatically explore columns,
-        statistics and patterns.
-
+        <div class="feature-card">
+        <h3>🧹 Clean</h3>
+        <p>
+        Handle missing values and duplicate records.
+        </p>
         </div>
         """, unsafe_allow_html=True)
 
     with col3:
 
         st.markdown("""
-        <div class="card">
-
-        ### 💡 3. Get Insights
-
-        Generate automatic business
-        insights and recommendations.
-
+        <div class="feature-card">
+        <h3>📈 Visualize</h3>
+        <p>
+        Create interactive charts and trends.
+        </p>
         </div>
         """, unsafe_allow_html=True)
 
-    st.subheader("✨ Main Features")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
+    with col4:
 
         st.markdown("""
-        ### 📂 Data Management
+        <div class="feature-card">
+        <h3>💡 Insights</h3>
+        <p>
+        Discover business insights automatically.
+        </p>
+        </div>
+        """, unsafe_allow_html=True)
 
-        - CSV upload
-        - Excel upload
-        - Missing value handling
-        - Duplicate removal
-        - Data preview
-        """)
+    st.write("")
 
-        st.markdown("""
-        ### 📈 Visualization
+    st.subheader("🔄 Workflow")
 
-        - Bar charts
-        - Pie charts
-        - Histograms
-        - Trend analysis
-        - Correlation matrix
-        """)
+    st.write("""
+    **1. Upload Dataset**  
+    ↓  
+    **2. Clean Data**  
+    ↓  
+    **3. Analyze Data**  
+    ↓  
+    **4. Generate Visualizations**  
+    ↓  
+    **5. Generate Smart Insights**  
+    ↓  
+    **6. Export Reports**
+    """)
 
-    with col2:
 
-        st.markdown("""
-        ### 🤖 Smart Insights
+# ============================================================
+# ADMIN USER MANAGEMENT
+# ============================================================
 
-        - Average analysis
-        - Maximum and minimum values
-        - Outlier detection
-        - Correlation analysis
-        - Category analysis
-        """)
+elif menu == "👥 User Management":
 
-        st.markdown("""
-        ### 📥 Reports
+    if st.session_state.username != "admin":
 
-        - CSV download
-        - Excel download
-        - PDF report
-        - Business summary
-        """)
+        st.error(
+            "Access denied. Administrator access required."
+        )
 
-    st.divider()
+    else:
 
-    st.subheader("🔄 Project Workflow")
+        st.title("👥 User Management")
 
-    workflow = st.columns(4)
+        users_df = get_users()
 
-    steps = [
-        ("1️⃣", "Upload Dataset"),
-        ("2️⃣", "Clean Data"),
-        ("3️⃣", "Analyze Data"),
-        ("4️⃣", "Generate Insights")
-    ]
+        col1, col2 = st.columns(2)
 
-    for column, (number, title) in zip(
-        workflow,
-        steps
-    ):
+        with col1:
 
-        with column:
-
-            st.info(
-                f"{number}\n\n**{title}**"
+            st.metric(
+                "Total Registered Users",
+                len(users_df)
             )
 
+        with col2:
 
-# =========================================================
-# USER MANAGEMENT
-# =========================================================
+            st.metric(
+                "Administrator",
+                "admin"
+            )
 
-elif page == "👥 User Management":
+        st.subheader("Registered Users")
 
-    st.title("👥 User Management")
+        st.dataframe(
+            users_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        st.info(
+            "User passwords are securely stored as SHA-256 hashes "
+            "and are not displayed."
+        )
+
+
+# ============================================================
+# SYSTEM INFORMATION
+# ============================================================
+
+elif menu == "ℹ️ System Information":
 
     if st.session_state.username != "admin":
 
@@ -540,154 +587,146 @@ elif page == "👥 User Management":
 
     else:
 
-        users_df = get_users()
+        st.title("ℹ️ System Information")
 
-        st.metric(
-            "Total Registered Users",
-            len(users_df)
-        )
-
-        st.subheader("Registered Users")
-
-        if len(users_df) > 0:
-
-            st.dataframe(
-                users_df,
-                use_container_width=True,
-                hide_index=True
-            )
-
-        st.info(
-            "🔒 Passwords are securely stored as SHA-256 hashes."
-        )
-
-
-# =========================================================
-# SYSTEM INFORMATION
-# =========================================================
-
-elif page == "ℹ️ System Information":
-
-    st.title("ℹ️ System Information")
-
-    st.subheader("Application")
-
-    st.write(
-        "Smart Data Visualization and Business Insights System"
-    )
-
-    st.subheader("Technology Stack")
-
-    technology_df = pd.DataFrame({
-
-        "Technology": [
-            "Python",
-            "Streamlit",
-            "Pandas",
-            "NumPy",
-            "Plotly",
-            "SQLite",
-            "OpenPyXL",
-            "ReportLab"
-        ],
-
-        "Purpose": [
-            "Programming",
-            "Web Application",
-            "Data Analysis",
-            "Numerical Analysis",
-            "Visualization",
-            "User Authentication",
-            "Excel Processing",
-            "PDF Reports"
-        ]
-
-    })
-
-    st.dataframe(
-        technology_df,
-        use_container_width=True,
-        hide_index=True
-    )
-
-    st.subheader("🎯 Project Objective")
-
-    st.write(
-        """
-        The main objective of Smart Data Analyzer is to provide
-        an easy-to-use web application for uploading, cleaning,
-        analyzing and visualizing datasets while automatically
-        generating useful business insights.
-        """
-    )
-
-    st.subheader("📌 Main Modules")
-
-    modules = [
-        "User Authentication",
-        "Dataset Upload",
-        "Data Cleaning",
-        "Statistical Analysis",
-        "Data Visualization",
-        "Smart Insights",
-        "Business Report",
-        "Excel Export",
-        "PDF Export"
-    ]
-
-    for module in modules:
+        st.subheader("Application")
 
         st.write(
-            f"✅ {module}"
+            "**Application:** Smart Data Analyzer"
         )
 
+        st.write(
+            "**Type:** Web-Based Data Analysis System"
+        )
 
-# =========================================================
+        st.write(
+            "**Purpose:** Data Visualization and Business Insights"
+        )
+
+        st.subheader("🛠️ Technology Stack")
+
+        technologies = pd.DataFrame({
+            "Technology": [
+                "Python",
+                "Streamlit",
+                "Pandas",
+                "NumPy",
+                "Plotly",
+                "SQLite",
+                "OpenPyXL",
+                "XlsxWriter",
+                "ReportLab"
+            ],
+            "Purpose": [
+                "Programming",
+                "Web Application",
+                "Data Analysis",
+                "Numerical Processing",
+                "Data Visualization",
+                "Database",
+                "Excel Processing",
+                "Excel Export",
+                "PDF Report"
+            ]
+        })
+
+        st.dataframe(
+            technologies,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        st.subheader("📌 Main Features")
+
+        st.write("""
+        - User Login and Signup
+        - Admin Panel
+        - CSV Upload
+        - Excel Upload
+        - Data Cleaning
+        - Missing Value Handling
+        - Duplicate Removal
+        - Statistical Analysis
+        - Interactive Visualizations
+        - Trend Analysis
+        - Outlier Detection
+        - Correlation Analysis
+        - Smart Business Insights
+        - CSV Export
+        - Excel Export
+        - PDF Report Generation
+        """)
+
+
+# ============================================================
 # DATA ANALYZER
-# =========================================================
+# ============================================================
 
-elif page == "📊 Data Analyzer":
+elif menu == "📊 Data Analyzer":
 
     st.title("📊 Data Analyzer")
 
     st.write(
-        "Upload a CSV or Excel file to start analyzing your data."
+        "Upload your CSV or Excel dataset to begin analysis."
     )
 
     uploaded_file = st.file_uploader(
-        "Choose your dataset",
+        "Upload Dataset",
         type=["csv", "xlsx"]
     )
+
+    # ========================================================
+    # NO FILE
+    # ========================================================
 
     if uploaded_file is None:
 
         st.info(
-            "👆 Upload a CSV or Excel file to begin."
+            "Please upload a CSV or Excel file."
         )
 
-        st.markdown("""
-        ### Available Analysis
+        st.subheader("Available Analysis")
 
-        - Dataset overview
-        - Data cleaning
-        - Column information
-        - Statistical analysis
-        - Automatic charts
-        - Trend analysis
-        - Outlier detection
-        - Correlation analysis
-        - Smart business insights
-        - Excel export
-        - CSV export
-        - PDF report
-        """)
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+
+            st.write("""
+            ### 🧹 Data Cleaning
+
+            - Missing values
+            - Duplicate records
+            - Data types
+            """)
+
+        with col2:
+
+            st.write("""
+            ### 📈 Visualization
+
+            - Bar charts
+            - Pie charts
+            - Histograms
+            - Trend charts
+            """)
+
+        with col3:
+
+            st.write("""
+            ### 💡 Smart Insights
+
+            - Average
+            - Maximum
+            - Minimum
+            - Outliers
+            - Correlations
+            """)
 
         st.stop()
 
-
-    # =====================================================
-    # LOAD DATA
-    # =====================================================
+    # ========================================================
+    # LOAD DATASET
+    # ========================================================
 
     try:
 
@@ -711,149 +750,153 @@ elif page == "📊 Data Analyzer":
 
         st.stop()
 
-
     st.session_state.uploaded_file_name = uploaded_file.name
 
-
-    # =====================================================
-    # ORIGINAL DATA INFORMATION
-    # =====================================================
-
     original_rows = len(df)
-
     original_columns = len(df.columns)
 
-    original_missing = int(
-        df.isnull().sum().sum()
-    )
+    # ========================================================
+    # BASIC CLEANING
+    # ========================================================
 
-    original_duplicates = int(
-        df.duplicated().sum()
-    )
+    duplicate_count = df.duplicated().sum()
 
+    # Remove duplicates
 
-    # =====================================================
-    # DATA CLEANING
-    # =====================================================
+    df = df.drop_duplicates()
 
-    cleaned_df = df.copy()
+    rows_after_duplicates = len(df)
 
-    cleaned_df = cleaned_df.drop_duplicates()
+    # Identify numeric columns
 
-    numeric_columns = cleaned_df.select_dtypes(
+    numeric_columns = df.select_dtypes(
         include=np.number
     ).columns.tolist()
 
-    categorical_columns = cleaned_df.select_dtypes(
-        include=["object", "category"]
+    # Identify categorical columns
+
+    categorical_columns = df.select_dtypes(
+        include=["object", "category", "bool"]
     ).columns.tolist()
 
-
-    # Fill numeric missing values
-
-    for column in numeric_columns:
-
-        if cleaned_df[column].isnull().sum() > 0:
-
-            cleaned_df[column] = cleaned_df[column].fillna(
-                cleaned_df[column].median()
-            )
-
-
-    # Fill categorical missing values
-
-    for column in categorical_columns:
-
-        if cleaned_df[column].isnull().sum() > 0:
-
-            cleaned_df[column] = cleaned_df[column].fillna(
-                "Unknown"
-            )
-
-
-    # =====================================================
-    # DATE DETECTION
-    # =====================================================
+    # ========================================================
+    # DATE COLUMN DETECTION
+    # ========================================================
 
     date_columns = []
 
-    for column in cleaned_df.columns:
+    for column in df.columns:
 
-        if cleaned_df[column].dtype == "object":
+        if (
+            column not in numeric_columns
+            and column not in categorical_columns
+        ):
+            continue
 
-            try:
+        try:
 
-                converted = pd.to_datetime(
-                    cleaned_df[column],
-                    errors="coerce"
+            converted = pd.to_datetime(
+                df[column],
+                errors="coerce"
+            )
+
+            valid_ratio = converted.notna().mean()
+
+            if valid_ratio >= 0.70:
+
+                date_columns.append(column)
+
+        except Exception:
+
+            pass
+
+    # ========================================================
+    # HANDLE MISSING VALUES
+    # ========================================================
+
+    missing_before = int(
+        df.isnull().sum().sum()
+    )
+
+    missing_report = []
+
+    for column in df.columns:
+
+        missing_count = df[column].isnull().sum()
+
+        if missing_count > 0:
+
+            if pd.api.types.is_numeric_dtype(
+                df[column]
+            ):
+
+                median_value = df[column].median()
+
+                df[column] = df[column].fillna(
+                    median_value
                 )
 
-                valid_ratio = converted.notna().mean()
+                method = "Filled with median"
 
-                if valid_ratio >= 0.70:
+            else:
 
-                    date_columns.append(column)
+                df[column] = df[column].fillna(
+                    "Unknown"
+                )
 
-            except:
+                method = "Filled with Unknown"
 
-                pass
+            missing_report.append({
+                "Column": column,
+                "Missing Values": int(missing_count),
+                "Method": method
+            })
 
+    missing_after = int(
+        df.isnull().sum().sum()
+    )
 
-    # =====================================================
-    # FILTERS
-    # =====================================================
+    # ========================================================
+    # SIDEBAR FILTERS
+    # ========================================================
 
     st.sidebar.subheader("🔎 Filters")
 
-    filter_df = cleaned_df.copy()
+    filtered_df = df.copy()
 
-    filterable_columns = []
+    filter_columns = []
 
     for column in categorical_columns:
 
-        unique_count = filter_df[column].nunique()
+        unique_count = df[column].nunique()
 
         if unique_count <= 30:
 
-            filterable_columns.append(column)
+            filter_columns.append(column)
 
-
-    for column in filterable_columns:
+    for column in filter_columns:
 
         options = sorted(
-            filter_df[column]
-            .astype(str)
-            .unique()
-            .tolist()
+            df[column].astype(str).unique().tolist()
         )
 
         selected = st.sidebar.multiselect(
-            f"{column}",
+            f"Filter {column}",
             options,
             default=options
         )
 
         if selected:
 
-            filter_df = filter_df[
-                filter_df[column]
-                .astype(str)
-                .isin(selected)
+            filtered_df = filtered_df[
+                filtered_df[column].astype(str).isin(
+                    selected
+                )
             ]
 
-
-    # =====================================================
-    # TITLE
-    # =====================================================
-
-    st.success(
-        f"📁 File loaded successfully: **{uploaded_file.name}**"
-    )
-
-
-    # =====================================================
-    # OVERVIEW METRICS
-    # =====================================================
+    # ========================================================
+    # DATASET OVERVIEW
+    # ========================================================
 
     st.subheader("📌 Dataset Overview")
 
@@ -863,68 +906,62 @@ elif page == "📊 Data Analyzer":
 
         st.metric(
             "Rows",
-            len(filter_df)
+            len(filtered_df)
         )
 
     with col2:
 
         st.metric(
             "Columns",
-            len(filter_df.columns)
+            len(filtered_df.columns)
         )
 
     with col3:
 
         st.metric(
             "Missing Values",
-            int(filter_df.isnull().sum().sum())
+            missing_after
         )
 
     with col4:
 
         st.metric(
             "Duplicates Removed",
-            original_duplicates
+            duplicate_count
         )
 
-
-    # =====================================================
+    # ========================================================
     # DATA PREVIEW
-    # =====================================================
+    # ========================================================
 
     st.subheader("👀 Data Preview")
 
     st.dataframe(
-        filter_df.head(20),
-        use_container_width=True
+        filtered_df.head(100),
+        use_container_width=True,
+        hide_index=True
     )
 
-
-    # =====================================================
+    # ========================================================
     # COLUMN INFORMATION
-    # =====================================================
+    # ========================================================
 
     st.subheader("📋 Column Information")
 
     column_info = pd.DataFrame({
-
-        "Column": filter_df.columns,
-
+        "Column": filtered_df.columns,
         "Data Type": [
-            str(filter_df[column].dtype)
-            for column in filter_df.columns
+            str(filtered_df[column].dtype)
+            for column in filtered_df.columns
         ],
-
         "Missing Values": [
-            int(filter_df[column].isnull().sum())
-            for column in filter_df.columns
+            int(filtered_df[column].isnull().sum())
+            for column in filtered_df.columns
         ],
-
         "Unique Values": [
-            int(filter_df[column].nunique())
-            for column in filter_df.columns
+            int(filtered_df[column].nunique())
+            for column in filtered_df.columns
         ]
-
     })
 
     st.dataframe(
@@ -933,79 +970,87 @@ elif page == "📊 Data Analyzer":
         hide_index=True
     )
 
-
-    # =====================================================
-    # NUMERICAL ANALYSIS
-    # =====================================================
+    # ========================================================
+    # NUMERICAL STATISTICS
+    # ========================================================
 
     if numeric_columns:
 
-        st.subheader("🔢 Numerical Analysis")
+        st.subheader("📊 Numerical Statistics")
 
-        available_numeric = [
-            column
-            for column in numeric_columns
-            if column in filter_df.columns
-        ]
+        statistics = filtered_df[
+            numeric_columns
+        ].describe().T
 
-        if available_numeric:
+        statistics = statistics.reset_index()
 
-            st.dataframe(
-                filter_df[available_numeric].describe().T,
-                use_container_width=True
-            )
+        statistics = statistics.rename(
+            columns={"index": "Column"}
+        )
 
+        st.dataframe(
+            statistics,
+            use_container_width=True,
+            hide_index=True
+        )
 
-            selected_numeric = st.selectbox(
-                "Select numerical column",
-                available_numeric
-            )
+    # ========================================================
+    # VISUALIZATION
+    # ========================================================
 
+    st.subheader("📈 Data Visualization")
 
-            fig_hist = px.histogram(
-                filter_df,
-                x=selected_numeric,
-                title=f"Distribution of {selected_numeric}"
-            )
+    # --------------------------------------------------------
+    # HISTOGRAM
+    # --------------------------------------------------------
 
-            st.plotly_chart(
-                fig_hist,
-                use_container_width=True
-            )
+    if numeric_columns:
 
+        selected_numeric = st.selectbox(
+            "Select numerical column",
+            numeric_columns
+        )
 
-    # =====================================================
-    # CATEGORY ANALYSIS
-    # =====================================================
+        fig_hist = px.histogram(
+            filtered_df,
+            x=selected_numeric,
+            title=f"Distribution of {selected_numeric}",
+            marginal="box"
+        )
 
-    if categorical_columns:
+        st.plotly_chart(
+            fig_hist,
+            use_container_width=True
+        )
 
-        st.subheader("🏷️ Category Analysis")
+    # --------------------------------------------------------
+    # BAR + PIE CHART
+    # --------------------------------------------------------
 
-        available_categories = [
-            column
-            for column in categorical_columns
-            if column in filter_df.columns
-        ]
+    if filter_columns:
 
-        if available_categories:
+        selected_category = st.selectbox(
+            "Select categorical column",
+            filter_columns
+        )
 
-            selected_category = st.selectbox(
-                "Select categorical column",
-                available_categories
-            )
-
-            category_counts = (
-                filter_df[selected_category]
-                .astype(str)
-                .value_counts()
-                .reset_index()
-            )
-
-            category_counts.columns = [
-                selected_category,
-                "Count"
+        category_counts = (
+            filtered_df[
+                selected_category
             ]
+            .astype(str)
+            .value_counts()
+            .reset_index()
+        )
+
+        category_counts.columns = [
+            selected_category,
+            "Count"
+        ]
+
+        col1, col2 = st.columns(2)
+
+        with col1:
 
             fig_bar = px.bar(
                 category_counts,
@@ -1019,6 +1064,8 @@ elif page == "📊 Data Analyzer":
                 use_container_width=True
             )
 
+        with col2:
+
             fig_pie = px.pie(
                 category_counts,
                 names=selected_category,
@@ -1031,14 +1078,13 @@ elif page == "📊 Data Analyzer":
                 use_container_width=True
             )
 
-
-    # =====================================================
-    # TREND ANALYSIS
-    # =====================================================
+    # ========================================================
+    # DATE / TREND ANALYSIS
+    # ========================================================
 
     if date_columns and numeric_columns:
 
-        st.subheader("📈 Trend Analysis")
+        st.subheader("📅 Trend Analysis")
 
         selected_date = st.selectbox(
             "Select date column",
@@ -1046,11 +1092,11 @@ elif page == "📊 Data Analyzer":
         )
 
         selected_value = st.selectbox(
-            "Select numerical column for trend",
+            "Select value column",
             numeric_columns
         )
 
-        trend_df = filter_df.copy()
+        trend_df = filtered_df.copy()
 
         trend_df[selected_date] = pd.to_datetime(
             trend_df[selected_date],
@@ -1078,78 +1124,73 @@ elif page == "📊 Data Analyzer":
             use_container_width=True
         )
 
-
-    # =====================================================
+    # ========================================================
     # SMART INSIGHTS
-    # =====================================================
+    # ========================================================
 
-    st.subheader("🤖 Smart Data Insights")
+    st.subheader("💡 Smart Data Insights")
 
     insights = []
-
 
     # Numeric insights
 
     for column in numeric_columns:
 
-        if column not in filter_df.columns:
-            continue
-
-        series = pd.to_numeric(
-            filter_df[column],
-            errors="coerce"
-        ).dropna()
+        series = filtered_df[column].dropna()
 
         if len(series) == 0:
             continue
 
-        mean_value = series.mean()
-
-        max_value = series.max()
-
-        min_value = series.min()
-
-        median_value = series.median()
+        average = series.mean()
+        maximum = series.max()
+        minimum = series.min()
+        median = series.median()
 
         insights.append(
             f"📌 **{column}** has an average value of "
-            f"**{mean_value:,.2f}**."
+            f"**{average:,.2f}**."
         )
 
         insights.append(
-            f"🔺 Maximum **{column}** is "
-            f"**{max_value:,.2f}**."
+            f"📈 Maximum value of **{column}** is "
+            f"**{maximum:,.2f}**."
         )
 
         insights.append(
-            f"🔻 Minimum **{column}** is "
-            f"**{min_value:,.2f}**."
+            f"📉 Minimum value of **{column}** is "
+            f"**{minimum:,.2f}**."
         )
 
-        if mean_value > median_value:
+        if average > median:
 
             insights.append(
-                f"📊 **{column}** has a mean higher than "
-                f"its median, indicating possible "
-                f"right-skewed values."
+                f"📊 The average of **{column}** is higher "
+                f"than its median, which may indicate "
+                f"higher-value observations."
             )
 
+        elif average < median:
+
+            insights.append(
+                f"📊 The average of **{column}** is lower "
+                f"than its median, which may indicate "
+                f"lower-value observations."
+            )
 
         # IQR outlier detection
 
         q1 = series.quantile(0.25)
-
         q3 = series.quantile(0.75)
 
         iqr = q3 - q1
 
-        lower_bound = q1 - 1.5 * iqr
-
-        upper_bound = q3 + 1.5 * iqr
+        lower_limit = q1 - 1.5 * iqr
+        upper_limit = q3 + 1.5 * iqr
 
         outliers = series[
-            (series < lower_bound) |
-            (series > upper_bound)
+            (series < lower_limit)
+            |
+            (series > upper_limit)
         ]
 
         if len(outliers) > 0:
@@ -1160,67 +1201,125 @@ elif page == "📊 Data Analyzer":
                 f"using the IQR method."
             )
 
+    # Categorical insights
 
-    # Category insights
+    for column in filter_columns:
 
-    for column in categorical_columns:
+        if len(filtered_df[column]) > 0:
 
-        if column not in filter_df.columns:
-            continue
+            top_category = (
+                filtered_df[column]
+                .astype(str)
+                .value_counts()
+                .idxmax()
+            )
 
-        if len(filter_df[column]) == 0:
-            continue
+            top_count = (
+                filtered_df[column]
+                .astype(str)
+                .value_counts()
+                .max()
+            )
 
-        top_category = (
-            filter_df[column]
-            .astype(str)
-            .value_counts()
-            .idxmax()
-        )
+            insights.append(
+                f"🏆 The most common value in **{column}** "
+                f"is **{top_category}** with "
+                f"**{top_count} records**."
+            )
 
-        top_count = (
-            filter_df[column]
-            .astype(str)
-            .value_counts()
-            .max()
-        )
+    # Correlation insights
 
-        insights.append(
-            f"🏆 Most common value in **{column}** is "
-            f"**{top_category}** with **{top_count} records**."
-        )
+    if len(numeric_columns) >= 2:
 
+        correlation_matrix = filtered_df[
+            numeric_columns
+        ].corr()
 
-    # Display insights
+        correlation_pairs = []
+
+        for i in range(
+            len(numeric_columns)
+        ):
+
+            for j in range(
+                i + 1,
+                len(numeric_columns)
+            ):
+
+                col1 = numeric_columns[i]
+                col2 = numeric_columns[j]
+
+                value = correlation_matrix.loc[
+                    col1,
+                    col2
+                ]
+
+                if not pd.isna(value):
+
+                    correlation_pairs.append(
+                        (
+                            abs(value),
+                            value,
+                            col1,
+                            col2
+                        )
+                    )
+
+        if correlation_pairs:
+
+            correlation_pairs.sort(
+                reverse=True
+            )
+
+            _, strongest_value, col1, col2 = (
+                correlation_pairs[0]
+            )
+
+            if strongest_value > 0:
+
+                insights.append(
+                    f"🔗 **{col1}** and **{col2}** "
+                    f"have the strongest positive correlation "
+                    f"of **{strongest_value:.2f}**."
+                )
+
+            else:
+
+                insights.append(
+                    f"🔗 **{col1}** and **{col2}** "
+                    f"have the strongest negative correlation "
+                    f"of **{strongest_value:.2f}**."
+                )
 
     if insights:
 
         for insight in insights:
 
-            st.info(insight)
+            st.write(insight)
 
     else:
 
-        st.warning(
-            "No automatic insights could be generated."
+        st.info(
+            "Not enough numerical or categorical data "
+            "to generate insights."
         )
 
-
-    # =====================================================
-    # CORRELATION
-    # =====================================================
+    # ========================================================
+    # CORRELATION MATRIX
+    # ========================================================
 
     if len(numeric_columns) >= 2:
 
         st.subheader("🔗 Correlation Analysis")
 
-        correlation_df = filter_df[
+        correlation_matrix = filtered_df[
             numeric_columns
         ].corr()
 
         fig_corr = px.imshow(
-            correlation_df,
+            correlation_matrix,
             text_auto=True,
+            aspect="auto",
             title="Correlation Matrix"
         )
 
@@ -1229,94 +1328,59 @@ elif page == "📊 Data Analyzer":
             use_container_width=True
         )
 
-        correlation_values = correlation_df.copy()
+    # ========================================================
+    # AUTOMATIC BUSINESS SUMMARY
+    # ========================================================
 
-        np.fill_diagonal(
-            correlation_values.values,
-            np.nan
-        )
-
-        if correlation_values.notna().any().any():
-
-            max_pair = correlation_values.stack().idxmax()
-
-            min_pair = correlation_values.stack().idxmin()
-
-            max_corr = correlation_values.stack().max()
-
-            min_corr = correlation_values.stack().min()
-
-            st.write(
-                f"🔗 Strongest positive relationship: "
-                f"**{max_pair[0]}** and **{max_pair[1]}** "
-                f"({max_corr:.2f})"
-            )
-
-            st.write(
-                f"🔗 Strongest negative relationship: "
-                f"**{min_pair[0]}** and **{min_pair[1]}** "
-                f"({min_corr:.2f})"
-            )
-
-
-    # =====================================================
-    # BUSINESS SUMMARY
-    # =====================================================
-
-    st.subheader("💼 Automatic Business Summary")
+    st.subheader("📋 Automatic Business Summary")
 
     st.write(
         f"""
-        The uploaded dataset contains **{len(filter_df)} rows**
-        and **{len(filter_df.columns)} columns** after filtering.
+        The uploaded dataset contains **{original_rows}**
+        original records and **{original_columns} columns**.
 
-        The system automatically cleaned duplicate records
-        and handled missing values where possible.
+        After removing duplicate records, the dataset contains
+        **{len(df)} records**.
 
-        Numerical columns were analyzed using statistical
-        measures such as mean, median, minimum, maximum
-        and outlier detection.
+        The system detected **{len(numeric_columns)} numerical
+        columns** and **{len(categorical_columns)} categorical
+        columns**.
 
-        Categorical columns were analyzed based on their
-        frequency and distribution.
+        A total of **{missing_before} missing values** were
+        identified before cleaning.
 
-        The system also generated visualizations and
-        correlation analysis to help identify patterns
-        within the dataset.
+        After cleaning, **{missing_after} missing values**
+        remain.
+
+        The system performed statistical analysis,
+        visualization, outlier detection and correlation
+        analysis on the available data.
         """
     )
 
-
-    # =====================================================
+    # ========================================================
     # DATA CLEANING REPORT
-    # =====================================================
+    # ========================================================
 
     st.subheader("🧹 Data Cleaning Report")
 
-    cleaned_missing = int(
-        cleaned_df.isnull().sum().sum()
-    )
-
     cleaning_report = pd.DataFrame({
-
         "Metric": [
             "Original Rows",
+            "Rows After Duplicate Removal",
             "Original Columns",
-            "Original Missing Values",
-            "Original Duplicate Rows",
-            "Rows After Cleaning",
-            "Columns After Cleaning"
+            "Missing Values Before Cleaning",
+            "Missing Values After Cleaning",
+            "Duplicates Removed"
         ],
-
         "Value": [
             original_rows,
+            rows_after_duplicates,
             original_columns,
-            original_missing,
-            original_duplicates,
-            len(cleaned_df),
-            len(cleaned_df.columns)
+            missing_before,
+            missing_after,
+            duplicate_count
         ]
-
     })
 
     st.dataframe(
@@ -1325,117 +1389,29 @@ elif page == "📊 Data Analyzer":
         hide_index=True
     )
 
+    if missing_report:
 
-    # =====================================================
-    # DOWNLOAD SECTION
-    # =====================================================
+        st.subheader("Missing Value Handling")
 
-    st.divider()
-
-    st.subheader("📥 Download Reports & Data")
-
-    col1, col2, col3 = st.columns(3)
-
-
-    # -----------------------------------------------------
-    # CSV DOWNLOAD
-    # -----------------------------------------------------
-
-    with col1:
-
-        csv_data = filter_df.to_csv(
-            index=False
-        ).encode("utf-8")
-
-        st.download_button(
-            label="📥 Download CSV",
-            data=csv_data,
-            file_name="analyzed_data.csv",
-            mime="text/csv",
-            use_container_width=True
+        missing_report_df = pd.DataFrame(
+            missing_report
         )
 
-
-    # -----------------------------------------------------
-    # EXCEL DOWNLOAD
-    # -----------------------------------------------------
-
-    with col2:
-
-        excel_buffer = io.BytesIO()
-
-        with pd.ExcelWriter(
-            excel_buffer,
-            engine="xlsxwriter"
-        ) as writer:
-
-            filter_df.to_excel(
-                writer,
-                index=False,
-                sheet_name="Analyzed Data"
-            )
-
-            cleaning_report.to_excel(
-                writer,
-                index=False,
-                sheet_name="Cleaning Report"
-            )
-
-            if numeric_columns:
-
-                available_numeric = [
-                    column
-                    for column in numeric_columns
-                    if column in filter_df.columns
-                ]
-
-                if available_numeric:
-
-                    filter_df[
-                        available_numeric
-                    ].describe().T.to_excel(
-                        writer,
-                        sheet_name="Statistics"
-                    )
-
-            worksheet = writer.sheets[
-                "Analyzed Data"
-            ]
-
-            worksheet.freeze_panes(
-                1,
-                0
-            )
-
-            for column_index, column_name in enumerate(
-                filter_df.columns
-            ):
-
-                worksheet.set_column(
-                    column_index,
-                    column_index,
-                    18
-                )
-
-        excel_buffer.seek(0)
-
-        st.download_button(
-            label="📊 Download Excel",
-            data=excel_buffer,
-            file_name="Smart_Data_Analyzer.xlsx",
-            mime=(
-                "application/vnd.openxmlformats-"
-                "officedocument.spreadsheetml.sheet"
-            ),
-            use_container_width=True
+        st.dataframe(
+            missing_report_df,
+            use_container_width=True,
+            hide_index=True
         )
 
-
-    # =====================================================
+    # ========================================================
     # PDF REPORT
-    # =====================================================
+    # ========================================================
 
-    with col3:
+    st.subheader("📄 Generate PDF Report")
+
+    if st.button(
+        "Generate PDF Report"
+    ):
 
         try:
 
@@ -1451,8 +1427,9 @@ elif page == "📊 Data Analyzer":
             from reportlab.lib.styles import (
                 getSampleStyleSheet
             )
-            from reportlab.lib.enums import TA_CENTER
-
+            from reportlab.lib.enums import (
+                TA_CENTER
+            )
 
             pdf_buffer = io.BytesIO()
 
@@ -1464,7 +1441,6 @@ elif page == "📊 Data Analyzer":
             styles = getSampleStyleSheet()
 
             title_style = styles["Title"]
-
             title_style.alignment = TA_CENTER
 
             story = []
@@ -1482,46 +1458,37 @@ elif page == "📊 Data Analyzer":
 
             story.append(
                 Paragraph(
-                    f"Dataset: {uploaded_file.name}",
+                    "Dataset Overview",
                     styles["Heading2"]
                 )
             )
 
-            story.append(
-                Spacer(1, 10)
-            )
-
-            report_data = [
+            overview_data = [
                 ["Metric", "Value"],
-                ["Rows", str(len(filter_df))],
-                ["Columns", str(len(filter_df.columns))],
-                [
-                    "Missing Values",
-                    str(
-                        int(
-                            filter_df.isnull()
-                            .sum()
-                            .sum()
-                        )
-                    )
-                ],
-                [
-                    "Duplicate Rows Removed",
-                    str(original_duplicates)
-                ]
+                ["File Name", uploaded_file.name],
+                ["Rows", str(len(filtered_df))],
+                ["Columns", str(len(filtered_df.columns))],
+                ["Missing Values", str(missing_after)],
+                ["Duplicates Removed", str(duplicate_count)]
             ]
 
-            report_table = Table(
-                report_data
+            overview_table = Table(
+                overview_data
             )
 
-            report_table.setStyle(
+            overview_table.setStyle(
                 TableStyle([
                     (
                         "BACKGROUND",
                         (0, 0),
                         (-1, 0),
-                        colors.lightgrey
+                        colors.grey
+                    ),
+                    (
+                        "TEXTCOLOR",
+                        (0, 0),
+                        (-1, 0),
+                        colors.white
                     ),
                     (
                         "GRID",
@@ -1540,7 +1507,7 @@ elif page == "📊 Data Analyzer":
             )
 
             story.append(
-                report_table
+                overview_table
             )
 
             story.append(
@@ -1560,11 +1527,12 @@ elif page == "📊 Data Analyzer":
                     insight
                     .replace("**", "")
                     .replace("📌", "")
-                    .replace("🔺", "")
-                    .replace("🔻", "")
-                    .replace("⚠️", "")
+                    .replace("📈", "")
+                    .replace("📉", "")
                     .replace("📊", "")
+                    .replace("⚠️", "")
                     .replace("🏆", "")
+                    .replace("🔗", "")
                 )
 
                 story.append(
@@ -1575,11 +1543,11 @@ elif page == "📊 Data Analyzer":
                 )
 
                 story.append(
-                    Spacer(1, 8)
+                    Spacer(1, 5)
                 )
 
             story.append(
-                Spacer(1, 15)
+                Spacer(1, 10)
             )
 
             story.append(
@@ -1591,11 +1559,12 @@ elif page == "📊 Data Analyzer":
 
             story.append(
                 Paragraph(
-                    "The Smart Data Analyzer system "
-                    "processed the uploaded dataset, "
-                    "performed data cleaning, statistical "
-                    "analysis, visualization and automatic "
-                    "business insight generation.",
+                    f"The dataset contains "
+                    f"{len(filtered_df)} records and "
+                    f"{len(filtered_df.columns)} columns. "
+                    f"The system performed data cleaning, "
+                    f"statistical analysis, visualization, "
+                    f"outlier detection and correlation analysis.",
                     styles["BodyText"]
                 )
             )
@@ -1607,34 +1576,122 @@ elif page == "📊 Data Analyzer":
             pdf_buffer.seek(0)
 
             st.download_button(
-                label="📄 Download PDF",
+                label="⬇️ Download PDF Report",
                 data=pdf_buffer,
                 file_name="Smart_Data_Analyzer_Report.pdf",
-                mime="application/pdf",
-                use_container_width=True
+                mime="application/pdf"
             )
 
         except ImportError:
 
-            st.warning(
-                "Install ReportLab using: pip install reportlab"
+            st.error(
+                "ReportLab is not installed. "
+                "Run: pip install reportlab"
             )
 
+    # ========================================================
+    # CSV DOWNLOAD
+    # ========================================================
 
-# =========================================================
+    st.subheader("📥 Download Analyzed CSV")
+
+    csv_data = filtered_df.to_csv(
+        index=False
+    ).encode("utf-8")
+
+    st.download_button(
+        label="⬇️ Download CSV",
+        data=csv_data,
+        file_name="analyzed_data.csv",
+        mime="text/csv"
+    )
+
+    # ========================================================
+    # EXCEL DOWNLOAD
+    # ========================================================
+
+    st.subheader("📥 Download Analyzed Excel")
+
+    excel_buffer = io.BytesIO()
+
+    try:
+
+        with pd.ExcelWriter(
+            excel_buffer,
+            engine="xlsxwriter"
+        ) as writer:
+
+            filtered_df.to_excel(
+                writer,
+                sheet_name="Analyzed Data",
+                index=False
+            )
+
+            cleaning_report.to_excel(
+                writer,
+                sheet_name="Cleaning Report",
+                index=False
+            )
+
+            if numeric_columns:
+
+                statistics.to_excel(
+                    writer,
+                    sheet_name="Statistics",
+                    index=False
+                )
+
+            workbook = writer.book
+
+            # Formatting
+
+            for sheet_name in writer.sheets:
+
+                worksheet = writer.sheets[
+                    sheet_name
+                ]
+
+                worksheet.freeze_panes(
+                    1,
+                    0
+                )
+
+                worksheet.set_column(
+                    0,
+                    20,
+                    20
+                )
+
+        excel_buffer.seek(0)
+
+        st.download_button(
+            label="⬇️ Download Excel",
+            data=excel_buffer,
+            file_name="analyzed_data.xlsx",
+            mime=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            )
+        )
+
+    except Exception as error:
+
+        st.error(
+            f"Excel export error: {error}"
+        )
+
+
+# ============================================================
 # FOOTER
-# =========================================================
+# ============================================================
 
 st.markdown(
     """
     <div class="footer">
-
-    📊 <b>Smart Data Analyzer</b><br>
-
+    <hr>
+    <b>Smart Data Analyzer</b><br>
     Smart Data Visualization and Business Insights System<br>
-
-    Built using Python • Streamlit • Pandas • Plotly • NumPy
-
+    MCA Academic Project
     </div>
     """,
     unsafe_allow_html=True
